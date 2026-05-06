@@ -107,18 +107,14 @@ body::before {
 .reward-note { font-size:12px; color:var(--muted); text-align:center; font-family:'DM Mono',monospace; margin-bottom:24px; }
 
 /* History */
-.rec-summary { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:20px; }
-.rec-stat { background:var(--bg); border-radius:14px; padding:12px 8px; text-align:center; border:1px solid var(--border); }
-.rec-stat-val { font-family:'DM Mono',monospace; font-size:20px; color:var(--accent); line-height:1.1; }
-.rec-stat-label { font-size:10px; color:var(--muted); margin-top:3px; }
-.history-list { max-height:300px; overflow-y:auto; }
+.history-list { margin-top:6px; max-height:340px; overflow-y:auto; }
 .history-row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border); }
 .history-row:last-child { border-bottom:none; }
-.history-date { color:var(--text); font-size:13px; }
+.history-date { color:var(--muted); font-family:'DM Mono',monospace; font-size:12px; }
 .history-cnt { font-size:11px; color:var(--muted); margin-top:2px; }
 .history-time { font-family:'DM Mono',monospace; color:var(--accent); font-size:16px; }
-.bar-wrap { width:60px; height:5px; background:var(--border); border-radius:3px; overflow:hidden; margin-left:8px; }
-.bar-fill { height:100%; background:var(--accent); border-radius:3px; opacity:.45; }
+.bar-wrap { width:70px; height:5px; background:var(--border); border-radius:3px; overflow:hidden; margin-left:8px; }
+.bar-fill { height:100%; background:var(--accent-lt); border-radius:3px; }
 .history-empty { text-align:center; color:var(--muted); font-size:13px; padding:28px 0; }
 
 /* Mini Widget */
@@ -155,7 +151,7 @@ body::before {
         </div>
       </div>
       <div style="margin-top:14px;text-align:center">
-        <button class="btn btn-ghost" onclick="showScreen('historyScreen');renderHistory()">📊 我的记录</button>
+        <button class="btn btn-ghost" onclick="showScreen('historyScreen');renderHistory()">📅 历史记录</button>
       </div>
     </div>
   </div>
@@ -197,21 +193,7 @@ body::before {
   <!-- History -->
   <div id="historyScreen" class="screen">
     <div class="card">
-      <div class="head">📊 我的背诵记录</div>
-      <div class="rec-summary">
-        <div class="rec-stat">
-          <div class="rec-stat-val" id="recTotal">—</div>
-          <div class="rec-stat-label">总背诵时长</div>
-        </div>
-        <div class="rec-stat">
-          <div class="rec-stat-val" id="recDays">—</div>
-          <div class="rec-stat-label">累计天数</div>
-        </div>
-        <div class="rec-stat">
-          <div class="rec-stat-val" id="recStreak">—</div>
-          <div class="rec-stat-label">连续打卡🔥</div>
-        </div>
-      </div>
+      <div class="head">📅 背诵历史</div>
       <div class="history-list" id="historyList"></div>
       <div class="btn-row" style="margin-top:20px">
         <button class="btn btn-ghost" onclick="showScreen('setupScreen')">← 返回</button>
@@ -266,35 +248,9 @@ function getHistory(){
     return {date,secs,cnt};
   });
 }
-function calcStreak(data){
-  // data is sorted newest first, already filtered to days with secs>0
-  const today=todayStr();
-  let streak=0;
-  const d=new Date(); d.setHours(0,0,0,0);
-  for(let i=0;i<data.length;i++){
-    const expected=new Date(d); expected.setDate(d.getDate()-i);
-    const eStr=expected.toISOString().slice(0,10);
-    if(data[i].date===eStr && data[i].secs>0) streak++;
-    else break;
-  }
-  return streak;
-}
-
 function renderHistory(){
-  const data=getHistory();
-
-  // Summary stats
-  const totalSec=data.reduce((a,d)=>a+d.secs,0);
-  const totalDays=data.length;
-  const streak=calcStreak(data);
-
-  const th=Math.floor(totalSec/3600), tm=Math.floor((totalSec%3600)/60);
-  document.getElementById('recTotal').textContent=th>0?`${th}h${tm}m`:`${tm}m`;
-  document.getElementById('recDays').textContent=totalDays>0?`${totalDays}天`:'—';
-  document.getElementById('recStreak').textContent=streak>0?`${streak}天`:'0天';
-
-  // List
   const list=document.getElementById('historyList');
+  const data=getHistory();
   if(!data.length){ list.innerHTML='<div class="history-empty">还没有记录，快去背书吧 🐶</div>'; return; }
   const maxSecs=Math.max(...data.map(d=>d.secs),1);
   list.innerHTML=data.map(d=>{
