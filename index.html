@@ -105,8 +105,6 @@ body::before {
 .reward-emoji { font-size:54px; text-align:center; margin:4px 0 14px; }
 .reward-msg { font-size:15px; line-height:1.8; text-align:center; color:var(--text); margin-bottom:8px; }
 .reward-note { font-size:12px; color:var(--muted); text-align:center; font-family:'DM Mono',monospace; margin-bottom:24px; }
-
-/* History */
 .history-list { margin-top:6px; max-height:340px; overflow-y:auto; }
 .history-row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border); }
 .history-row:last-child { border-bottom:none; }
@@ -116,8 +114,6 @@ body::before {
 .bar-wrap { width:70px; height:5px; background:var(--border); border-radius:3px; overflow:hidden; margin-left:8px; }
 .bar-fill { height:100%; background:var(--accent-lt); border-radius:3px; }
 .history-empty { text-align:center; color:var(--muted); font-size:13px; padding:28px 0; }
-
-/* Mini Widget */
 #miniWidget {
   position:fixed; top:20px; right:20px; background:var(--card);
   border:1px solid var(--border); border-radius:20px; padding:14px 18px;
@@ -130,7 +126,6 @@ body::before {
 </head>
 <body>
 <div id="app">
-  <!-- Setup -->
   <div id="setupScreen" class="screen active">
     <div class="card">
       <div class="head">🐶 小宝宝监工番茄钟</div>
@@ -156,7 +151,6 @@ body::before {
     </div>
   </div>
 
-  <!-- Running -->
   <div id="runningScreen" class="screen">
     <div class="card">
       <div class="head" id="sessionLabel">背诵中</div>
@@ -180,7 +174,6 @@ body::before {
     </div>
   </div>
 
-  <!-- Done -->
   <div id="completedScreen" class="screen">
     <div class="card">
       <div class="reward-emoji" id="rewardEmoji">🎉</div>
@@ -190,7 +183,6 @@ body::before {
     </div>
   </div>
 
-  <!-- History -->
   <div id="historyScreen" class="screen">
     <div class="card">
       <div class="head">📅 背诵历史</div>
@@ -202,7 +194,6 @@ body::before {
   </div>
 </div>
 
-<!-- Mini Widget -->
 <div id="miniWidget">
   <div class="mini-timer" id="miniTimer">00:00</div>
   <div class="mini-status">
@@ -216,13 +207,12 @@ body::before {
 
 <script>
 let totalSecs=0, remainSecs=0;
-let timerInterval=null, detectInterval=null;
+let timerInterval=null, detectInterval=null, drawInterval=null;
 let noFaceCount=0, isPaused=false, isRunning=false;
-let faceReady=false, stream=null;
-const WARN_CHECKS=8; // 8×2s = 16s
+let faceReady=false, stream=null, videoEl=null;
+const WARN_CHECKS=8;
 const MODELS='https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
-// Storage
 const todayStr=()=>new Date().toISOString().slice(0,10);
 const dKey=()=>`focus_${todayStr()}`;
 const cKey=()=>`count_${todayStr()}`;
@@ -233,7 +223,6 @@ function addRecord(sec,completed){
   if(completed) localStorage.setItem(cKey(),String(getCount()+1));
 }
 
-// History
 function getHistory(){
   const keys=[];
   for(let i=0;i<localStorage.length;i++){
@@ -278,7 +267,6 @@ function formatDateLabel(dateStr){
   return `${d.getMonth()+1}月${d.getDate()}日`;
 }
 
-// Init
 function init(){ refreshStats(); loadFaceApi(); }
 function refreshStats(){
   const t=getTotal(), c=getCount();
@@ -296,7 +284,6 @@ function loadFaceApi(){
   document.head.appendChild(sc);
 }
 
-// Session
 async function startSession(){
   const mins=parseInt(document.getElementById('minutesInput').value)||40;
   totalSecs=mins*60; remainSecs=totalSecs;
@@ -304,14 +291,16 @@ async function startSession(){
   showScreen('runningScreen');
   document.getElementById('sessionLabel').textContent=`背诵中 · 共 ${mins} 分钟`;
   renderTimer(); setProgress(1);
+
   try{
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:320},height:{ideal:240}}});
-    const v=document.getElementById('hiddenVideo');
-    v.srcObject=stream; await v.play();
+    videoEl=document.getElementById('hiddenVideo');
+    videoEl.srcObject=stream; await videoEl.play();
     document.getElementById('previewCanvas').style.display='block';
     document.getElementById('camPlaceholder').style.display='none';
     document.getElementById('faceBadge').style.display='block';
-    startDetect(v);
+    startDraw(videoEl);
+    startDetect(videoEl);
   }catch(e){
     document.getElementById('camPlaceholder').textContent='📷 摄像头不可用，仅计时';
   }
@@ -326,17 +315,26 @@ function tick(){
   if(remainSecs<=0) endSession(true);
 }
 
-function startDetect(video){
+// 独立画面刷新——不受暂停影响，100ms一次保持画面流畅
+function startDraw(video){
+  clearInterval(drawInterval);
   const canvas=document.getElementById('previewCanvas');
+  drawInterval=setInterval(()=>{
+    if(!video || video.readyState<2) return;
+    const w=video.videoWidth||320, h=video.videoHeight||240;
+    if(canvas.width!==w) canvas.width=w;
+    if(canvas.height!==h) canvas.height=h;
+    const ctx=canvas.getContext('2d');
+    ctx.save(); ctx.translate(w,0); ctx.scale(-1,1);
+    ctx.drawImage(video,0,0,w,h); ctx.restore();
+  }, 100);
+}
+
+// 人脸检测——暂停时跳过检测但画面继续刷新
+function startDetect(video){
+  clearInterval(detectInterval);
   detectInterval=setInterval(async()=>{
-    if(isPaused)return;
-    if(video.readyState>=2){
-      const w=video.videoWidth||320, h=video.videoHeight||240;
-      canvas.width=w; canvas.height=h;
-      const ctx=canvas.getContext('2d');
-      ctx.save(); ctx.translate(w,0); ctx.scale(-1,1);
-      ctx.drawImage(video,0,0,w,h); ctx.restore();
-    }
+    if(isPaused) return;
     if(!faceReady){ setFace(null,'模型加载中…'); return; }
     try{
       const det=await faceapi.detectAllFaces(video,
@@ -348,15 +346,15 @@ function startDetect(video){
         if(noFaceCount>=WARN_CHECKS){ setFace('red',`走神 ${noFaceCount*2}s`); showWarn(); beep(); }
         else setFace('gray',`未检测 ${noFaceCount*2}s`);
       }
-    }catch{}
-  },2000);
+    }catch(e){}
+  }, 2000);
 }
 
 function togglePause(){
   isPaused=!isPaused;
   document.getElementById('pauseBtn').textContent=isPaused?'▶ 继续':'⏸ 暂停';
   document.getElementById('pausedOverlay').style.display=isPaused?'flex':'none';
-  if(isPaused){ setFace(null,'已暂停'); hideWarn(); }
+  if(isPaused){ setFace(null,'已暂停'); hideWarn(); noFaceCount=0; }
 }
 
 function confirmStop(){
@@ -367,7 +365,9 @@ function confirmStop(){
 
 function endSession(completed, forcedElapsed){
   isRunning=false;
-  clearInterval(timerInterval); clearInterval(detectInterval);
+  clearInterval(timerInterval);
+  clearInterval(detectInterval);
+  clearInterval(drawInterval);
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
   document.getElementById('miniWidget').style.display='none';
   document.getElementById('app').style.display='';
@@ -411,7 +411,6 @@ function endSession(completed, forcedElapsed){
   document.title='小宝宝监工钟';
 }
 
-// Widget
 function minimizeToWidget(){
   document.getElementById('app').style.display='none';
   const w=document.getElementById('miniWidget');
@@ -437,7 +436,6 @@ function makeDraggable(el){
   el.addEventListener('pointerup',()=>{ drag=false; });
 }
 
-// Helpers
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
